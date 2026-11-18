@@ -27287,6 +27287,16 @@ function field(geo, mat, n, size, seed, sx0, sx1, sy0, sy1, pal) {
   im.receiveShadow = true;
   return im;
 }
+var LineSegments = class extends Object3D {
+  constructor(geometry, material) {
+    super();
+    this.isLine = true;
+    this.isLineSegments = true;
+    this.type = "LineSegments";
+    this.geometry = geometry;
+    this.material = material;
+  }
+};
 function buildFx(t, ground, height, q) {
   const group = new Group();
   const un = {
@@ -27378,9 +27388,84 @@ void main() {
   clouds.frustumCulled = false;
   clouds.renderOrder = -10;
   group.add(clouds);
+  const smokeMax = Math.max(24, Math.min(120, Math.floor(q.parts * 0.24))), smokePos = new Float32Array(smokeMax * 3), smokeLife = new Float32Array(smokeMax), smokeSize = new Float32Array(smokeMax), smokeVel = new Float32Array(smokeMax * 3);
+  const sg = new BufferGeometry();
+  sg.setAttribute("position", new BufferAttribute(smokePos, 3));
+  sg.setAttribute("aLife", new BufferAttribute(smokeLife, 1));
+  sg.setAttribute("aSize", new BufferAttribute(smokeSize, 1));
+  const sm = new ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    vertexShader: `attribute float aLife; attribute float aSize; varying float vLife;
+void main(){vLife=aLife;vec4 mv=modelViewMatrix*vec4(position,1.0);gl_PointSize=aSize*210.0/max(-mv.z,1.0);gl_Position=projectionMatrix*mv;}`,
+    fragmentShader: `varying float vLife;
+void main(){float r=length(gl_PointCoord-0.5);if(r>0.5)discard;float soft=smoothstep(0.5,0.08,r);gl_FragColor=vec4(0.48,0.46,0.42,vLife*vLife*0.42*soft);}`
+  });
+  const smoke = new Points(sg, sm);
+  smoke.frustumCulled = false;
+  group.add(smoke);
+  const skidMax = Math.max(20, Math.min(80, Math.floor(q.parts * 0.16))), skidPos = new Float32Array(skidMax * 6), skidLife = new Float32Array(skidMax * 2), skidAge = new Float32Array(skidMax);
+  const kg = new BufferGeometry();
+  kg.setAttribute("position", new BufferAttribute(skidPos, 3));
+  kg.setAttribute("aLife", new BufferAttribute(skidLife, 1));
+  const km = new ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    vertexShader: `attribute float aLife; varying float vLife; void main(){vLife=aLife;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+    fragmentShader: `varying float vLife; void main(){gl_FragColor=vec4(0.07,0.06,0.055,vLife*0.34);}`
+  });
+  const skids = new LineSegments(kg, km);
+  skids.frustumCulled = false;
+  group.add(skids);
+  let smokeCursor = 0, skidCursor = 0;
+  const emitSmoke = (x, y, z, force = 1) => {
+    const n = force > 1.4 ? 2 : 1;
+    for (let k = 0; k < n; k++) {
+      const i = smokeCursor++ % smokeMax, p = i * 3;
+      smokePos[p] = x + (hash01(i, smokeCursor, 1) - 0.5) * 0.24;
+      smokePos[p + 1] = y + hash01(i, smokeCursor, 2) * 0.12;
+      smokePos[p + 2] = z + (hash01(i, smokeCursor, 3) - 0.5) * 0.24;
+      smokeLife[i] = 1;
+      smokeSize[i] = 0.65 + hash01(i, smokeCursor, 4) * 0.6 * force;
+      smokeVel[p] = (hash01(i, smokeCursor, 5) - 0.5) * 0.5;
+      smokeVel[p + 1] = 0.5 + hash01(i, smokeCursor, 6) * 0.55;
+      smokeVel[p + 2] = (hash01(i, smokeCursor, 7) - 0.5) * 0.5;
+    }
+  };
+  const markSkid = (ax, az, bx, bz, y) => {
+    if (Math.hypot(bx - ax, bz - az) < 0.035) return;
+    const i = skidCursor++ % skidMax, p = i * 6, l = i * 2;
+    skidPos[p] = ax; skidPos[p + 1] = y + 0.012; skidPos[p + 2] = az;
+    skidPos[p + 3] = bx; skidPos[p + 4] = y + 0.012; skidPos[p + 5] = bz;
+    skidAge[i] = 1.6;
+    skidLife[l] = 1; skidLife[l + 1] = 1;
+  };
   const mixNow = new Vector3(0, 1, 0);
   return {
     group,
+    emitSmoke,
+    markSkid,
+    step(dt) {
+      for (let i = 0; i < smokeMax; i++) {
+        if (smokeLife[i] <= 0) continue;
+        const p = i * 3;
+        smokeLife[i] = Math.max(0, smokeLife[i] - dt / 0.85);
+        smokePos[p] += smokeVel[p] * dt;
+        smokePos[p + 1] += smokeVel[p + 1] * dt;
+        smokePos[p + 2] += smokeVel[p + 2] * dt;
+        smokeVel[p + 1] *= 0.992;
+        smokeSize[i] += dt * 0.42;
+      }
+      for (let i = 0; i < skidMax; i++) {
+        if (skidAge[i] <= 0) continue;
+        skidAge[i] = Math.max(0, skidAge[i] - dt);
+        skidLife[i * 2] = skidLife[i * 2 + 1] = Math.min(1, skidAge[i]);
+      }
+      sg.attributes.position.needsUpdate = true;
+      sg.attributes.aLife.needsUpdate = true;
+      sg.attributes.aSize.needsUpdate = true;
+      kg.attributes.aLife.needsUpdate = true;
+    },
     update(cam, mix, hpx) {
       un.uCam.value.copy(cam);
       mixNow.x += (mix[0] - mixNow.x) * 0.03;
@@ -27621,10 +27706,10 @@ function makeUI(root, input, mobile) {
   const st = document.createElement("style");
   st.textContent = `#ui{position:fixed;inset:0;pointer-events:none;z-index:10;color:#f3ead7}
 #ui>*{position:absolute}
-#hud-loc{left:14px;top:12px;background:rgba(14,17,22,.62);padding:8px 12px;border-radius:10px;max-width:60vw}
+#hud-loc{left:max(12px,env(safe-area-inset-left));top:max(10px,env(safe-area-inset-top));background:rgba(14,17,22,.62);padding:8px 12px;border-radius:10px;max-width:min(60vw,360px);box-sizing:border-box}
 #hud-loc b{display:block;font-size:15px;letter-spacing:.03em}
 #hud-loc span{font-size:12px;opacity:.85}
-#hud-speed{right:14px;top:12px;background:rgba(14,17,22,.62);padding:6px 12px;border-radius:10px;text-align:right}
+#hud-speed{right:max(12px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top));background:rgba(14,17,22,.62);padding:6px 12px;border-radius:10px;text-align:right}
 #hud-speed b{font-size:26px}
 #hud-speed span{font-size:11px;opacity:.7;margin-left:4px}
 #hud-speed i{display:block;font-style:normal;font-size:11px;opacity:.8}
@@ -27632,12 +27717,15 @@ function makeUI(root, input, mobile) {
 #hud-toast{left:50%;top:14%;transform:translateX(-50%);background:rgba(14,17,22,.8);padding:10px 16px;border-radius:12px;text-align:center;opacity:0;transition:opacity .3s}
 #hud-toast b{display:block;font-size:16px;color:#e2a04a}
 #hud-keys{left:50%;bottom:10px;transform:translateX(-50%);font-size:12px;opacity:.8;background:rgba(14,17,22,.5);padding:5px 10px;border-radius:8px;white-space:nowrap}
-#joy{left:22px;bottom:26px;width:128px;height:128px;border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.3);pointer-events:auto;touch-action:none}
+#joy{left:max(14px,env(safe-area-inset-left));bottom:max(18px,env(safe-area-inset-bottom));width:128px;height:128px;border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.3);pointer-events:auto;touch-action:none;box-sizing:border-box}
 #knob{position:absolute;left:39px;top:39px;width:50px;height:50px;border-radius:50%;background:rgba(226,160,74,.85)}
-#btns{right:16px;bottom:22px;display:grid;grid-template-columns:64px 64px;gap:10px;pointer-events:auto}
-#btns button{width:64px;height:64px;border-radius:50%;border:2px solid rgba(255,255,255,.35);background:rgba(14,17,22,.55);color:#f3ead7;font-weight:800;font-size:13px;touch-action:none}`;
+#btns{right:max(12px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));display:grid;grid-template-columns:64px 64px;gap:10px;pointer-events:auto}
+#btns button{width:64px;height:64px;border-radius:50%;border:2px solid rgba(255,255,255,.35);background:rgba(14,17,22,.55);color:#f3ead7;font-weight:800;font-size:13px;touch-action:none;user-select:none;-webkit-user-select:none;transition:transform .08s ease,background-color .08s ease}
+#btns button:active{transform:scale(.92);background:rgba(226,160,74,.86);color:#12151b}
+@media (max-width:420px){#joy{width:104px;height:104px}#knob{left:31px;top:31px;width:42px;height:42px}#btns{grid-template-columns:56px 56px;gap:7px}#btns button{width:56px;height:56px;font-size:11px}#hud-loc{max-width:54vw;padding:7px 9px}#hud-loc b{font-size:13px}#hud-loc span{font-size:11px}#hud-speed{padding:5px 9px}#hud-speed b{font-size:22px}}
+`;
   document.head.appendChild(st);
-  root.innerHTML = `<div id='hud-loc'><b id='hud-place'></b><span id='hud-street'></span></div><div id='hud-speed'><b id='hud-kmh'>0</b><span>km/h</span><i id='hud-veh'></i></div><div id='hud-hint'></div><div id='hud-toast'></div>` + (mobile ? `<div id='joy'><i id='knob'></i></div><div id='btns'><button id='b-time'>PORA</button><button id='b-cam'>CAM</button><button id='b-act'>E</button><button id='b-brake'>STOP</button><span></span><button id='b-gas'>GAZ</button></div>` : `<div id='hud-keys'>WASD \u2014 ruch \xB7 Shift \u2014 bieg \xB7 Spacja \u2014 skok / hamulec \xB7 E \u2014 wsi\u0105d\u017A / wysi\u0105d\u017A / wie\u017Ca \xB7 C \u2014 kamera \xB7 T \u2014 pora dnia \xB7 P \u2014 efekty \xB7 mysz \u2014 obr\xF3t</div>`);
+  root.innerHTML = `<div id='hud-loc'><b id='hud-place'></b><span id='hud-street'></span></div><div id='hud-speed'><b id='hud-kmh'>0</b><span>km/h</span><i id='hud-veh'></i></div><div id='hud-hint'></div><div id='hud-toast'></div>` + (mobile ? `<div id='joy' aria-label='Sterowanie kierunkiem'><i id='knob'></i></div><div id='btns'><button id='b-time' aria-label='Zmień porę dnia'>PORA</button><button id='b-cam' aria-label='Zmień kamerę'>CAM</button><button id='b-act' aria-label='Interakcja'>E</button><button id='b-brake' aria-label='Hamulec'>STOP</button><span></span><button id='b-gas' aria-label='Gaz'>GAZ</button></div>` : `<div id='hud-keys'>WASD \u2014 ruch \xB7 Shift \u2014 bieg \xB7 Spacja \u2014 skok / hamulec \xB7 E \u2014 wsi\u0105d\u017A / wysi\u0105d\u017A / wie\u017Ca \xB7 C \u2014 kamera \xB7 T \u2014 pora dnia \xB7 P \u2014 efekty \xB7 mysz \u2014 obr\xF3t</div>`);
   const $2 = (id) => document.getElementById(id);
   if (mobile) {
     const joy = $2("joy"), knob = $2("knob");
@@ -27760,7 +27848,9 @@ async function startGame(container, uiRoot, world, opts, progress) {
   };
   const W = () => container.clientWidth || innerWidth, H = () => container.clientHeight || innerHeight;
   const renderer = new WebGLRenderer({ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: opts.test });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, Q.px));
+  const basePixelRatio = Math.min(window.devicePixelRatio || 1, Q.px);
+  let pixelRatio = basePixelRatio;
+  renderer.setPixelRatio(pixelRatio);
   renderer.setSize(W(), H());
   renderer.shadowMap.enabled = Q.shadow > 0;
   renderer.shadowMap.type = PCFSoftShadowMap;
@@ -27917,7 +28007,7 @@ async function startGame(container, uiRoot, world, opts, progress) {
     }
   }
   const fwx = Math.sin(sh), fwz = Math.cos(sh), rgx = -fwz, rgz = fwx;
-  const S = { px: sx - rgx * 2.2, pz: sz - rgz * 2.2, py: 0, vy: 0, yaw: sh, speed: 0, veh: null, cam: 0, camYaw: sh, camPitch: 0.3, dragT: 0, started: false, walk: 0, time: 0, post: !!Q.post, tower: false };
+  const S = { px: sx - rgx * 2.2, pz: sz - rgz * 2.2, py: 0, vy: 0, yaw: sh, speed: 0, veh: null, cam: 0, camYaw: sh, camPitch: 0.3, dragT: 0, impactT: 0, started: false, walk: 0, time: 0, post: !!Q.post, tower: false };
   const input = { mx: 0, my: 0, gas: 0, brake: 0, sprint: false, jump: false, act: false, camNext: false, timeNext: false, lookX: 0, lookY: 0 };
   const keys = {};
   const ui = makeUI(uiRoot, input, mobile);
@@ -27930,7 +28020,8 @@ async function startGame(container, uiRoot, world, opts, progress) {
     const hl = W2 ? ground(v.x + lx * W2, v.z + lz * W2, v.y + 1) : y0, hr = W2 ? ground(v.x - lx * W2, v.z - lz * W2, v.y + 1) : y0;
     const ty = W2 ? (hf + hb + hl + hr) / 4 : (hf + hb) / 2, k = Math.min(1, dt * 12);
     v.y += (ty - v.y) * k;
-    const pitch = Math.atan2(hf - hb, 2 * L2), roll = W2 ? Math.atan2(hl - hr, 2 * W2) : v.steer * Math.min(0.5, Math.abs(v.v) * 0.045);
+    const pitch = Math.atan2(hf - hb, 2 * L2), terrainRoll = W2 ? Math.atan2(hl - hr, 2 * W2) : 0;
+    const roll = terrainRoll - (bike ? 0 : v.steer * Math.min(0.18, Math.abs(v.v) * 0.012));
     const m = v.mesh;
     m.position.set(v.x, v.y, v.z);
     m.rotation.order = "YXZ";
@@ -27944,7 +28035,7 @@ async function startGame(container, uiRoot, world, opts, progress) {
     }
   }
   const addVeh = (mesh, kind, x, z, h, max, acc, name) => {
-    const v = { mesh, kind, x, z, y: ground(x, z, 1e9), h, v: 0, max, acc, name, wheels: mesh.userData.wheels || [], steer: 0, wr: mesh.userData.wr || 0.36 };
+    const v = { mesh, kind, x, z, y: ground(x, z, 1e9), h, v: 0, max, acc, name, wheels: mesh.userData.wheels || [], steer: 0, wr: mesh.userData.wr || 0.36, skidLx: null, skidLz: null, skidRx: null, skidRz: null, smokeT: 0 };
     scene.add(mesh);
     vehs.push(v);
     placeVeh(v, 1);
@@ -28056,6 +28147,7 @@ async function startGame(container, uiRoot, world, opts, progress) {
     else renderer.render(scene, camera);
   };
   function update(dt) {
+    S.impactT = Math.max(0, S.impactT - dt);
     let mx = input.mx, my = input.my;
     if (keys.KeyW || keys.ArrowUp) my += 1;
     if (keys.KeyS || keys.ArrowDown) my -= 1;
@@ -28099,6 +28191,10 @@ async function startGame(container, uiRoot, world, opts, progress) {
       if (v.v < -6) v.v = -6;
       const sp = Math.abs(v.v);
       v.steer += (mx - v.steer) * Math.min(1, dt * 6);
+      if (!bike && gas > 0 && sp > 3) {
+        const cornerLoad = Math.abs(v.steer) * sp;
+        v.v *= Math.max(0.9, 1 - cornerLoad * 0.004 * dt);
+      }
       const rate = Math.min(bike ? 2.4 : 1.9, sp / (bike ? 1.4 : 3.2)) / (1 + sp * 0.035);
       v.h -= v.steer * rate * dt * (v.v >= 0 ? 1 : -1);
       let nx = v.x + Math.sin(v.h) * v.v * dt, nz = v.z + Math.cos(v.h) * v.v * dt, hit = false;
@@ -28117,10 +28213,39 @@ async function startGame(container, uiRoot, world, opts, progress) {
       }
       if (hit) {
         if (sp > 9) ui.toast("Kraksa!", "Uwa\u017Caj na budynki i drzewa.");
+        S.impactT = Math.min(0.28, 0.08 + sp * 0.006);
+        if (sp > 12 && navigator.vibrate) navigator.vibrate(mobile ? 18 : 0);
         v.v *= 0.4;
       }
       v.x = nx;
       v.z = nz;
+      const markable = sf === SF.ROAD || sf === SF.WALK || sf === SF.PARKING || sf === SF.PAVED;
+      const slip = !bike && markable && sp > 4 ? Math.max(0, Math.abs(v.steer) * sp - 3) / 12 : 0;
+      const smokeAmount = Math.max(slip, !bike && markable && brake > 0.7 && sp > 8 ? 0.85 : 0);
+      if (smokeAmount > 0.12) {
+        const fx2 = Math.sin(v.h), fz2 = Math.cos(v.h), sx2 = Math.cos(v.h) * 0.72, sz2 = -Math.sin(v.h) * 0.72, rz = v.wb * 0.5;
+        const leftX = v.x - fx2 * rz + sx2, leftZ = v.z - fz2 * rz + sz2, rightX = v.x - fx2 * rz - sx2, rightZ = v.z - fz2 * rz - sz2;
+        if (slip > 0.12) {
+          if (v.skidLx !== null) fx.markSkid(v.skidLx, v.skidLz, leftX, leftZ, v.y);
+          if (v.skidRx !== null) fx.markSkid(v.skidRx, v.skidRz, rightX, rightZ, v.y);
+          v.skidLx = leftX;
+          v.skidLz = leftZ;
+          v.skidRx = rightX;
+          v.skidRz = rightZ;
+        }
+        v.smokeT -= dt;
+        if (v.smokeT <= 0) {
+          fx.emitSmoke(leftX, v.y + 0.18, leftZ, 0.8 + smokeAmount);
+          fx.emitSmoke(rightX, v.y + 0.18, rightZ, 0.8 + smokeAmount);
+          v.smokeT = 0.065;
+        }
+      } else {
+        v.skidLx = null;
+        v.skidLz = null;
+        v.skidRx = null;
+        v.skidRz = null;
+        v.smokeT = 0;
+      }
       placeVeh(v, dt);
       S.px = v.x;
       S.pz = v.z;
@@ -28194,9 +28319,17 @@ async function startGame(container, uiRoot, world, opts, progress) {
     if (snap) camPos.copy(tmpV);
     else camPos.lerp(tmpV, 1 - Math.exp(-9 * dt));
     if (S.cam !== 2 && !S.tower && inBld(camPos.x, camPos.z, camPos.y)) camPos.copy(tmpV);
-    tmpV.set(S.px + cx2 * 2.5, ty, S.pz + cz2 * 2.5);
+    if (S.impactT > 0) camPos.y += Math.sin(S.impactT * 70) * S.impactT * 0.32;
+    const lookAhead = 2.5 + (v ? Math.min(3, sp * 0.09) : 0);
+    tmpV.set(S.px + cx2 * lookAhead, ty, S.pz + cz2 * lookAhead);
     if (snap) camLook.copy(tmpV);
     else camLook.lerp(tmpV, 1 - Math.exp(-12 * dt));
+    const targetFov = v ? 60 + Math.min(7, sp * 0.13) : 60;
+    const nextFov = camera.fov + (targetFov - camera.fov) * (1 - Math.exp(-6 * dt));
+    if (Math.abs(nextFov - camera.fov) > 0.01) {
+      camera.fov = nextFov;
+      camera.updateProjectionMatrix();
+    }
     camera.position.copy(camPos);
     camera.lookAt(camLook);
   }
@@ -28290,19 +28423,45 @@ async function startGame(container, uiRoot, world, opts, progress) {
     const s = terrain.surf(x, z);
     return s === SF.FOREST || s === SF.SCRUB ? [1, 0.2, 0] : s === SF.MEADOW || s === SF.FIELD || s === SF.GRASS || s === SF.PARK || s === SF.WETLAND || s === SF.FARM ? [0.15, 1, 0.1] : [0.1, 0.15, 1];
   };
-  let testCam = null, last = performance.now(), hudT = 0, lightT = 0, frames = 0;
+  const FIXED_DT = 1 / 60;
+  let simAcc = 0, testCam = null, last = performance.now(), hudT = 0, lightT = 0, frames = 0, perfT = 0, perfSum = 0, perfSamples = 0;
   function frame() {
     requestAnimationFrame(frame);
     const now2 = performance.now(), dt = Math.min(0.05, (now2 - last) / 1e3);
     last = now2;
     frames++;
+    if (mobile) {
+      perfT += dt;
+      perfSum += dt;
+      perfSamples++;
+      if (perfT >= 0.8) {
+        const avg = perfSum / perfSamples;
+        const next = avg > 0.023 ? Math.max(0.75, pixelRatio - 0.1) : avg < 0.017 ? Math.min(basePixelRatio, pixelRatio + 0.05) : pixelRatio;
+        if (next !== pixelRatio) {
+          pixelRatio = next;
+          renderer.setPixelRatio(pixelRatio);
+          renderer.setSize(W(), H(), false);
+          if (composer) {
+            renderer.getDrawingBufferSize(bufSize);
+            composer.setSize(bufSize.x, bufSize.y);
+          }
+        }
+        perfT = 0;
+        perfSum = 0;
+        perfSamples = 0;
+      }
+    }
     U.time.value += dt;
     if (testCam) {
       camera.position.set(testCam[0], testCam[1], testCam[2]);
       camera.lookAt(testCam[3], testCam[4], testCam[5]);
       updateSun(testCam[3], testCam[4], testCam[5]);
     } else if (S.started) {
-      update(dt);
+      simAcc = Math.min(simAcc + dt, 0.12);
+      while (simAcc >= FIXED_DT) {
+        update(FIXED_DT);
+        simAcc -= FIXED_DT;
+      }
       updateCamera(dt, false);
       updateSun(S.px, S.py, S.pz);
     } else {
@@ -28314,6 +28473,7 @@ async function startGame(container, uiRoot, world, opts, progress) {
     sky.position.copy(camera.position);
     veg.update(camera.position.x, camera.position.z);
     fx.update(camera.position, mixAt(camera.position.x, camera.position.z), renderer.domElement.height);
+    fx.step(dt);
     lightT -= dt;
     if (lightT <= 0) {
       lightT = 0.25;
@@ -28440,7 +28600,7 @@ async function boot() {
   };
   try {
     progress(0.05, "Pobieranie mapy Che\u0142mka\u2026");
-    const res = await fetch("./world.json");
+    const res = await fetch("./world.json?v=lineseg-fix-20261118");
     if (!res.ok) throw new Error("world.json " + res.status);
     const world = await res.json();
     const api = await startGame($("game"), $("ui"), world, { test, quality: q.get("q") || "" }, progress);

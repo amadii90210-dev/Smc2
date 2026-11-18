@@ -3,23 +3,27 @@
 <head>
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover'>
+<meta name='theme-color' content='#0e1116'>
+<link rel='modulepreload' href='./app.js?v=lineseg-fix-20261118'>
+<link rel='preload' href='./world.json?v=lineseg-fix-20261118' as='fetch' crossorigin='anonymous'>
 <title>Chełmek Explore — otwarty świat 3D</title>
 <style>
-html,body{margin:0;height:100%;background:#0e1116;color:#f3ead7;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden;overscroll-behavior:none;touch-action:none;user-select:none;-webkit-user-select:none}
+html,body{margin:0;width:100%;height:100%;min-height:100dvh;background:#0e1116;color:#f3ead7;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden;overscroll-behavior:none;touch-action:none;user-select:none;-webkit-user-select:none}
 #game{position:fixed;inset:0}
 #game canvas{display:block;width:100%;height:100%}
-#loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:linear-gradient(160deg,#16202b,#0e1116);z-index:50;text-align:center;padding:24px}
+#loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:linear-gradient(160deg,#16202b,#0e1116);z-index:50;text-align:center;padding:24px max(24px,env(safe-area-inset-left)) 24px max(24px,env(safe-area-inset-right));box-sizing:border-box}
 #loading h1{margin:0;font-size:clamp(28px,6vw,54px);letter-spacing:.04em}
 #loading p{margin:0;opacity:.8;max-width:560px;line-height:1.4}
 #bar{width:min(420px,80vw);height:8px;border-radius:6px;background:#2a3038;overflow:hidden}
 #bar i{display:block;height:100%;width:4%;background:#e2a04a;transition:width .25s}
-#start{display:none;padding:14px 34px;border-radius:12px;border:0;background:#e2a04a;color:#12151b;font-weight:800;font-size:18px;cursor:pointer}
+#start{display:none;min-width:120px;min-height:48px;padding:12px 30px;border-radius:12px;border:0;background:#e2a04a;color:#12151b;font-weight:800;font-size:18px;cursor:pointer;touch-action:manipulation}
+@media (max-width:420px){#loading{gap:12px;padding-top:max(18px,env(safe-area-inset-top));padding-bottom:max(18px,env(safe-area-inset-bottom))}#loading h1{font-size:clamp(24px,9vw,36px)}#loading p{font-size:14px}#bar{width:78vw}}
 </style>
 </head>
 <body>
 <div id='game'></div>
 <div id='ui'></div>
-<div id='loading'><h1>CHEŁMEK EXPLORE</h1><p id='msg'>Wczytywanie miasta…</p><div id='bar'><i id='prog'></i></div><button id='start'>GRAJ</button><p style='font-size:12px;opacity:.55'>Dane mapy © autorzy OpenStreetMap (ODbL). Wysokości terenu: Mapzen Terrain Tiles.</p></div>
-<script type='module' src='./app.js'></script>
+<div id='loading'><h1>CHEŁMEK EXPLORE</h1><p id='msg' aria-live='polite'>Wczytywanie miasta…</p><div id='bar' role='progressbar' aria-label='Postęp ładowania'><i id='prog'></i></div><button id='start' type='button'>GRAJ</button><p style='font-size:12px;opacity:.55'>Dane mapy © autorzy OpenStreetMap (ODbL). Wysokości terenu: Mapzen Terrain Tiles.</p></div>
+<script type='module' src='./app.js?v=lineseg-fix-20261118'></script>
 </body>
 </html>
