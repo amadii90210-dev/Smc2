@@ -25740,10 +25740,12 @@ var Chunks = class {
   }
   meshes(mat, cast, receive) {
     const g = new Group();
-    for (const m of this.map.values()) {
+    for (const [k, m] of this.map) {
       const geo = m.geometry();
       if (!geo) continue;
       const mesh = new Mesh(geo, mat);
+      mesh.userData.chunkX = (Math.floor(k / 1024) - 512 + 0.5) * this.size;
+      mesh.userData.chunkZ = (k % 1024 - 512 + 0.5) * this.size;
       mesh.castShadow = cast;
       mesh.receiveShadow = receive;
       g.add(mesh);
@@ -27823,7 +27825,7 @@ function makeUI(root, input, mobile) {
 // src/engine.ts
 var QUAL = {
   test: { tex: 128, shadow: 1024, px: 1, far: 2600, near: 110, tfar: 800, dens: 0.25, aniso: 2, grass: 5e3, flowers: 800, parts: 200, gsize: 50, lights: 3, post: true },
-  low: { tex: 256, shadow: 0, px: 1, far: 1500, near: 60, tfar: 500, dens: 0.45, aniso: 2, grass: 7e3, flowers: 1e3, parts: 250, gsize: 44, lights: 2, post: false },
+  low: { tex: 160, shadow: 0, px: 0.75, far: 900, near: 40, tfar: 280, dens: 0.26, aniso: 1, grass: 3000, flowers: 400, parts: 128, gsize: 32, lights: 1, post: false },
   mid: { tex: 256, shadow: 2048, px: 1.5, far: 2800, near: 120, tfar: 900, dens: 0.8, aniso: 4, grass: 2e4, flowers: 3e3, parts: 500, gsize: 60, lights: 4, post: true },
   high: { tex: 512, shadow: 4096, px: 2, far: 4500, near: 180, tfar: 1300, dens: 1, aniso: 8, grass: 42e3, flowers: 6e3, parts: 900, gsize: 76, lights: 6, post: true }
 };
@@ -27847,7 +27849,7 @@ async function startGame(container, uiRoot, world, opts, progress) {
     tm = n;
   };
   const W = () => container.clientWidth || innerWidth, H = () => container.clientHeight || innerHeight;
-  const renderer = new WebGLRenderer({ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: opts.test });
+  const renderer = new WebGLRenderer({ antialias: !mobile, powerPreference: "high-performance", preserveDrawingBuffer: opts.test });
   const basePixelRatio = Math.min(window.devicePixelRatio || 1, Q.px);
   let pixelRatio = basePixelRatio;
   renderer.setPixelRatio(pixelRatio);
@@ -27912,7 +27914,16 @@ async function startGame(container, uiRoot, world, opts, progress) {
   lap("buildings");
   const groundTex = terrain.groundTexture(), heightTex = terrain.heightTexture();
   scene.add(terrain.meshes(terrainMaterial(terrain, groundTex, detailTexture())));
-  scene.add(chRoad.meshes(worldMaterial(atex, 2), false, true), chBld.meshes(worldMaterial(atex, 0), true, true));
+  const roadGroup = chRoad.meshes(worldMaterial(atex, 2), false, true), bldGroup = chBld.meshes(worldMaterial(atex, 0), true, true);
+  scene.add(roadGroup, bldGroup);
+  const worldGroups = [roadGroup, bldGroup], worldCullRange = mobile ? Math.min(720, Q.far) : Q.far + 180;
+  const updateWorldChunks = (cx, cz) => {
+    for (const group of worldGroups) for (const mesh of group.children) {
+      const dx = mesh.userData.chunkX - cx, dz = mesh.userData.chunkZ - cz;
+      mesh.visible = dx * dx + dz * dz < worldCullRange * worldCullRange;
+    }
+  };
+  updateWorldChunks(0, 0);
   const sg = buildSigns(bl.signs, aniso);
   if (sg) scene.add(sg);
   scene.add(new Mesh(terrain.waterGeometry(), new MeshStandardMaterial({ color: 3498620, roughness: 0.07, metalness: 0.6 })));
@@ -28424,7 +28435,7 @@ async function startGame(container, uiRoot, world, opts, progress) {
     return s === SF.FOREST || s === SF.SCRUB ? [1, 0.2, 0] : s === SF.MEADOW || s === SF.FIELD || s === SF.GRASS || s === SF.PARK || s === SF.WETLAND || s === SF.FARM ? [0.15, 1, 0.1] : [0.1, 0.15, 1];
   };
   const FIXED_DT = 1 / 60;
-  let simAcc = 0, testCam = null, last = performance.now(), hudT = 0, lightT = 0, frames = 0, perfT = 0, perfSum = 0, perfSamples = 0;
+  let simAcc = 0, testCam = null, last = performance.now(), hudT = 0, lightT = 0, worldT = 0, vegT = 0, vegX = Infinity, vegZ = Infinity, frames = 0, perfT = 0, perfSum = 0, perfSamples = 0;
   function frame() {
     requestAnimationFrame(frame);
     const now2 = performance.now(), dt = Math.min(0.05, (now2 - last) / 1e3);
@@ -28436,7 +28447,7 @@ async function startGame(container, uiRoot, world, opts, progress) {
       perfSamples++;
       if (perfT >= 0.8) {
         const avg = perfSum / perfSamples;
-        const next = avg > 0.023 ? Math.max(0.75, pixelRatio - 0.1) : avg < 0.017 ? Math.min(basePixelRatio, pixelRatio + 0.05) : pixelRatio;
+        const next = avg > 0.018 ? Math.max(0.6, pixelRatio - 0.1) : avg < 0.0155 ? Math.min(basePixelRatio, pixelRatio + 0.03) : pixelRatio;
         if (next !== pixelRatio) {
           pixelRatio = next;
           renderer.setPixelRatio(pixelRatio);
@@ -28471,7 +28482,19 @@ async function startGame(container, uiRoot, world, opts, progress) {
       updateSun(0, g0, 0);
     }
     sky.position.copy(camera.position);
-    veg.update(camera.position.x, camera.position.z);
+    worldT -= dt;
+    if (worldT <= 0) {
+      worldT = 0.12;
+      updateWorldChunks(camera.position.x, camera.position.z);
+    }
+    vegT -= dt;
+    const vegDx = camera.position.x - vegX, vegDz = camera.position.z - vegZ;
+    if (vegT <= 0 || vegDx * vegDx + vegDz * vegDz > 28 * 28) {
+      vegT = 0.12;
+      vegX = camera.position.x;
+      vegZ = camera.position.z;
+      veg.update(vegX, vegZ);
+    }
     fx.update(camera.position, mixAt(camera.position.x, camera.position.z), renderer.domElement.height);
     fx.step(dt);
     lightT -= dt;
@@ -28600,7 +28623,7 @@ async function boot() {
   };
   try {
     progress(0.05, "Pobieranie mapy Che\u0142mka\u2026");
-    const res = await fetch("./world.json?v=lineseg-fix-20261118");
+    const res = await fetch("./world.json?v=mobile-60fps-20261118");
     if (!res.ok) throw new Error("world.json " + res.status);
     const world = await res.json();
     const api = await startGame($("game"), $("ui"), world, { test, quality: q.get("q") || "" }, progress);
