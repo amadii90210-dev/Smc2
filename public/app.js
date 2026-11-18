@@ -27750,7 +27750,7 @@ async function startGame(container, uiRoot, world, opts, progress) {
     return new Promise((r) => setTimeout(r, 20));
   };
   const mobile = matchMedia("(pointer: coarse)").matches || Math.min(innerWidth, innerHeight) < 540;
-  const qn = opts.test ? "test" : QUAL[opts.quality] ? opts.quality : mobile ? "low" : "high";
+  const qn = opts.test ? "test" : QUAL[opts.quality] ? opts.quality : mobile ? "low" : "mid";
   const Q = QUAL[qn], diag = { q: qn, t: {} };
   let tm = performance.now();
   const lap = (k) => {
