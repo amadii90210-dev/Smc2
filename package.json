@@ -1,0 +1,22 @@
+{
+  "name": "chelmek-explore",
+  "version": "2.0.0",
+  "description": "Chełmek Explore 2.0 - 3D Browser Game",
+  "type": "module",
+  "scripts": {
+    "dev": "python3 -m http.server 8000 --directory public",
+    "build": "echo 'Static site - no build required'",
+    "lint": "echo 'No linter configured yet'"
+  },
+  "dependencies": {
+    "@vercel/speed-insights": "^1.0.12"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/amadii90210-dev/Smc2"
+  },
+  "license": "MIT"
+}
