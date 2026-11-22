@@ -1,4 +1,4 @@
-name: Deploy game to GitHub Pages
+name: Deploy Chełmek Explore to GitHub Pages
 
 on:
   push:
@@ -7,9 +7,11 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 concurrency:
-  group: github-pages
+  group: pages
   cancel-in-progress: true
 
 jobs:
@@ -18,17 +20,12 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
     steps:
-      - name: Check out repository
+      - name: Checkout
         uses: actions/checkout@v4
       - name: Configure Pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - name: Upload game files
+      - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: public

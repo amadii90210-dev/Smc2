@@ -1,10 +1,10 @@
 # Chełmek Explore 2.0
 
-## Zagraj
+## Zagraj online
 
-[**Uruchom grę online**](https://chelmek-explore.vercel.app/)
+[**Uruchom grę na GitHub Pages**](https://amadii90210-dev.github.io/Smc2/)
 
-Gra jest przeglądarkowym, trójwymiarowym spacerem po Chełmku. Sterowanie po wejściu do świata: **WASD** — ruch, **Shift** — bieg, **Spacja** — skok/hamulec, **E** — wsiądź/wysiądź/interakcja, **C** — kamera, **T** — pora dnia, **P** — efekty, mysz — obrót.
+Gra jest przeglądarkowym, trójwymiarowym spacerem po Chełmku. Sterowanie po wejściu do świata: **WASD** — ruch, **Shift** — bieg, **Spacja** — skok/hamulec, **E** — wsiądź/wysiądź/interakcja, **C** — kamera, **T** — pora dnia, **P** — efekty, mysz — obrót. Interfejs dotykowy działa na telefonach.
 
 ## Uruchom lokalnie
 
@@ -18,6 +18,6 @@ Następnie otwórz <http://localhost:8000/>. Gra korzysta z modułów i usług m
 
 ## Źródło i zakres repozytorium
 
-Bazą wizualną i działającą wersją jest [obecne wdrożenie Vercel](https://chelmek-explore.vercel.app/), wskazane w zleceniu. Oryginalne repozytorium [`Che-mek-EXPLORE-2.0`](https://github.com/amadii90210-dev/Che-mek-EXPLORE-2.0) zawierało wyłącznie README, dlatego `public/` przechowuje statyczny snapshot plików aplikacji z wdrożenia, a nie odzyskane źródła edytowalne. Projekt pozostaje grą webową opartą na Three.js — repozytorium nie zawiera projektu Unreal Engine 5.
+`public/` przechowuje statyczny pakiet działającej gry Three.js. Ulepszona wersja obejmuje m.in. fixed-step motion, sprężystą kamerę, pooled tire smoke/skid marks, adaptive mobile rendering, chunk culling oraz istniejące dane świata i sterowanie.
 
 Dane mapy: © autorzy OpenStreetMap (ODbL). Wysokości terenu: Mapzen Terrain Tiles. Zachowano atrybucję z bazowej aplikacji.
